@@ -1,0 +1,89 @@
+#%RAML 1.0
+title: Salesforce Financial Experience API
+version: 1.0.0
+baseUri: http://localhost:8083/api/salesforce
+mediaType: application/json
+
+documentation:
+  - title: Overview
+    content: API d'expérience pour Salesforce (CSR View) - fournit une vue financière optimisée pour les agents du service client
+
+types:
+  CSRFinancialSummary:
+    type: object
+    properties:
+      customer:
+        type: object
+        properties:
+          globalId: string
+          customerNumber?: string
+          party:
+            type: object
+            properties:
+              firstName?: string
+              lastName?: string
+              organizationName?: string
+              taxId?: string
+      accounts:
+        type: array
+        items:
+          type: object
+          properties:
+            accountNumber: string
+            accountType: string
+            accountName?: string
+            balance?: number
+            currency?: string
+            status?: string
+            openedDate?: date-only
+      cards:
+        type: array
+        items:
+          type: object
+          properties:
+            cardNumber: string
+            cardType: string
+            cardNetwork?: string
+            status?: string
+            creditLimit?: number
+            availableCredit?: number
+            expirationDate?: date-only
+      totalBalance?: number
+      totalAvailableCredit?: number
+      lastUpdated?: datetime
+  ErrorResponse:
+    type: object
+    properties:
+      error:
+        type: object
+        properties:
+          code: string
+          message: string
+
+/customers/{customerGlobalId}:
+  displayName: Customer Financial Summary (CSR View)
+  uriParameters:
+    customerGlobalId:
+      type: string
+      description: Identifiant global unique du client
+  get:
+    displayName: Get CSR Financial Summary
+    description: Récupère un résumé financier détaillé pour les agents du service client dans Salesforce
+    responses:
+      200:
+        body:
+          application/json:
+            type: CSRFinancialSummary
+      400:
+        body:
+          application/json:
+            type: ErrorResponse
+      404:
+        body:
+          application/json:
+            type: ErrorResponse
+      500:
+        body:
+          application/json:
+            type: ErrorResponse
+

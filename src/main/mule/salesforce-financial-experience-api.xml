@@ -1,0 +1,100 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<mule xmlns="http://www.mulesoft.org/schema/mule/core"
+  xmlns:doc="http://www.mulesoft.org/schema/mule/documentation"
+  xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core"
+  xmlns:http="http://www.mulesoft.org/schema/mule/http"
+  xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+  xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+  http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd
+">
+
+  <!-- GET /customers/{sfId}/financial-summary - Business Logic Flow -->
+  <flow name="get-csr-financial-summary-business-logic" doc:name="get-csr-financial-summary-business-logic">
+    <try doc:name="Try">
+      <http:request method="GET" config-ref="Salesforce_Customers_System_API_Config" path="/api/salesforce/customers/{sfId}" doc:name="Get Salesforce Customer">
+        <http:uri-params><![CDATA[#[{sfId: vars.customerGlobalId}]]]></http:uri-params>
+      </http:request>
+
+      <ee:transform doc:name="Extract Global ID">
+        <ee:variables>
+          <ee:set-variable variableName="customerGlobalId"><![CDATA[%dw 2.0
+output application/java
+var customer = payload
+var globalIdExternal = customer.externalIds filter ($.system != "Salesforce")[0]
+---
+globalIdExternal.value default null]]></ee:set-variable>
+        </ee:variables>
+      </ee:transform>
+
+      <choice doc:name="Has Global ID?">
+        <when expression="#[vars.customerGlobalId != null]">
+          <http:request method="GET" config-ref="Bank_Accounts_Process_API_Config" path="/api/bank-accounts/accounts" doc:name="Get Financial Summary">
+            <http:query-params><![CDATA[#[{
+              "customerGlobalId": vars.customerGlobalId
+            }]]]></http:query-params>
+          </http:request>
+
+          <ee:transform doc:name="Aggregate Financial Summary">
+            <ee:message>
+              <ee:set-payload><![CDATA[%dw 2.0
+output application/json
+var financialSummary = payload
+var accounts = financialSummary.accounts default []
+var creditCards = financialSummary.creditCards default []
+---
+{
+  customer: {
+    salesforceId: vars.customerGlobalId,
+    globalId: vars.customerGlobalId
+  },
+  accounts: accounts,
+  creditCards: creditCards
+}]]></ee:set-payload>
+            </ee:message>
+          </ee:transform>
+        </when>
+        <otherwise>
+          <ee:transform doc:name="No Global ID Response">
+            <ee:message>
+              <ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+  customer: {
+    salesforceId: vars.customerGlobalId,
+    globalId: null
+  },
+  accounts: [],
+  creditCards: [],
+  message: "Customer not yet synchronized to Global Data"
+}]]></ee:set-payload>
+            </ee:message>
+          </ee:transform>
+        </otherwise>
+      </choice>
+
+      <http:response statusCode="200" doc:name="HTTP Response"/>
+      
+      <error-handler>
+        <on-error-propagate type="HTTP:REQUEST" enableNotifications="true" logException="true" doc:name="HTTP Error">
+          <ee:transform doc:name="Transform Error">
+            <ee:message>
+              <ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+  error: {
+    code: "SERVICE_ERROR",
+    message: "An error occurred while fetching financial summary",
+    timestamp: now()
+  }
+}]]></ee:set-payload>
+            </ee:message>
+          </ee:transform>
+          <http:response statusCode="500" doc:name="HTTP Response"/>
+        </on-error-propagate>
+      </error-handler>
+    </try>
+  </flow>
+
+</mule>
